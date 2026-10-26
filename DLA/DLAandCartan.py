@@ -1,11 +1,5 @@
-from qiskit.quantum_info import Pauli, commutator
-
-
-#starting control terms for a linear spin chain with 3 qbits
-def controlHam():
-    return ["ZII","IZI","IIZ","XXI","IXX","XII","IIX"]
-
-
+from qiskit.quantum_info import Pauli
+import Config
 
 def DLA(lieAlgebra):
     newLiecomparisons = lieAlgebra.copy()
@@ -37,6 +31,6 @@ def cartanDecomp(lieAlgebra):
     return even_y_terms, odd_y_terms
 
 
-lieAlgebra = { i : Pauli(i) for i in controlHam()}
+lieAlgebra = { i : Pauli(i) for i in Config.controlSets[Config.activeSystem]}
 lieAlgebra = DLA(lieAlgebra)
-print(cartanDecomp(lieAlgebra))
+print(len(lieAlgebra))

@@ -1,0 +1,53 @@
+
+import numpy as np
+from qiskit.quantum_info import Pauli
+
+
+def pauli_matrix(label):
+    """Convert a Pauli string into a matrix."""
+    return np.asarray(Pauli(label).to_matrix(), dtype=complex)
+
+
+def build_hamiltonian(terms, coefficients):
+    """Construct H = sum_j c_j P_j."""
+    if not terms or len(terms) != len(coefficients):
+        raise ValueError("Invalid terms or coefficients.")
+
+    n = len(terms[0])
+    H = np.zeros((2**n, 2**n), dtype=complex)
+
+    for term, coeff in zip(terms, coefficients):
+        if len(term) != n:
+            raise ValueError("Inconsistent Pauli string lengths.")
+        H += float(coeff) * pauli_matrix(term)
+
+    return H
+
+
+def initial_hamiltonian(coefficients, h_terms):
+    """Construct K0 in the chosen commuting subspace."""
+    return build_hamiltonian(h_terms, coefficients)
+
+
+def ground_state(H):
+    """Return the ground-state energy and eigenvector."""
+    energies, vectors = np.linalg.eigh(H)
+    return energies[0], vectors[:, 0]
+
+
+def initial_state(K0):
+    """Find the ground state of the initial Hamiltonian."""
+    _, psi0 = ground_state(K0)
+    return psi0
+
+
+# Example: 3 spins
+if __name__ == "__main__":
+    h_terms = ["ZII", "IZI", "IIZ", "ZZZ"]
+    coefficients = [1.0, 1.0, 1.0, 0.0]
+
+    K0 = initial_hamiltonian(coefficients, h_terms)
+    psi0 = initial_state(K0)
+
+    print("Initial Hamiltonian:\n", K0)
+    print("Initial state:\n", psi0)

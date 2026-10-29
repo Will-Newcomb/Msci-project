@@ -1,0 +1,86 @@
+
+import numpy as np
+
+from initial_hamiltonian import ground_state
+
+
+def pure_state_fidelity(psi_target, psi_final):
+    """Calculate |<psi_target|psi_final>|^2."""
+    psi_target = psi_target / np.linalg.norm(psi_target)
+    psi_final = psi_final / np.linalg.norm(psi_final)
+
+    return float(
+        np.abs(np.vdot(psi_target, psi_final))**2
+    )
+
+
+def thermal_state(H, beta):
+    """Construct the Gibbs density matrix."""
+    energies, vectors = np.linalg.eigh(H)
+
+    weights = np.exp(-beta * (energies - energies.min()))
+    probabilities = weights / weights.sum()
+
+    return (vectors * probabilities) @ vectors.conj().T
+
+
+def matrix_sqrt_psd(A):
+    """Square root of a Hermitian positive semidefinite matrix."""
+    A = (A + A.conj().T) / 2
+
+    values, vectors = np.linalg.eigh(A)
+    values = np.clip(values, 0, None)
+
+    return (vectors * np.sqrt(values)) @ vectors.conj().T
+
+
+def thermal_fidelity(rho, sigma):
+    """Squared Uhlmann fidelity."""
+    sqrt_rho = matrix_sqrt_psd(rho)
+
+    middle = sqrt_rho @ sigma @ sqrt_rho
+    sqrt_middle = matrix_sqrt_psd(middle)
+
+    F = np.trace(sqrt_middle).real**2
+
+    return float(np.clip(F, 0, 1))
+
+
+def verify_transformation(K0, KT, V, beta=1.0):
+    """Check operator, ground-state and thermal-state accuracy."""
+    K_final = V @ K0 @ V.conj().T
+
+    operator_error = (
+        np.linalg.norm(K_final - KT)
+        / max(np.linalg.norm(KT), 1e-12)
+    )
+
+    E0, psi0 = ground_state(K0)
+    ET, psi_target = ground_state(KT)
+
+    psi_final = V @ psi0
+
+    F_pure = pure_state_fidelity(
+        psi_target, psi_final
+    )
+
+    rho0 = thermal_state(K0, beta)
+    rho_target = thermal_state(KT, beta)
+
+    rho_final = V @ rho0 @ V.conj().T
+
+    F_thermal = thermal_fidelity(
+        rho_target, rho_final
+    )
+
+    spectrum_error = np.max(np.abs(
+        np.linalg.eigvalsh(K0)
+        - np.linalg.eigvalsh(KT)
+    ))
+
+    return {
+        "operator_error": operator_error,
+        "pure_fidelity": F_pure,
+        "thermal_fidelity": F_thermal,
+        "spectrum_error": spectrum_error
+    }

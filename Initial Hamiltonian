@@ -12,6 +12,7 @@ def build_hamiltonian(terms, coefficients):
     """Construct H = sum_j c_j P_j."""
     if not terms or len(terms) != len(coefficients):
         raise ValueError("Invalid terms or coefficients.")
+    #error tb edited
 
     n = len(terms[0])
     H = np.zeros((2**n, 2**n), dtype=complex)

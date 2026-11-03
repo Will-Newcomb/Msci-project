@@ -8,10 +8,24 @@ from scipy.sparse.linalg import expm_multiply
 from math import pi
 import Tools
 
-#This function currently uses the strcutre constant calculatro from DLA does it for every control operator and convertes them into a list of sparce matrices
-#The order is the order of the contorl ops 
+#note to self the index map and list ordering match
 
 def KCreation(controlOps, pauliLiearray, index_map):
+    """
+    Calculates all strcture constants, stores them as sparse matrices in a list ordered by control operators/index map
+    
+    inputs:
+        ControlOps: Needed to iterate though and calculate strcuture constants
+        PauliLiearray: Need to calculate structure constants with each contorl operator
+        indexMap: needed as strcure constant calculation needs both vectorised calcutions and non ordered lookups
+
+    outputs:
+        K_matrices: a list of structure constants stored as sparce matrices numbered/ordered by the indexmap/control ops 
+
+    Note:
+        Should be in DLA file, then all indexmap,paulilist and DLA are stored in a file to not be recalculated?
+    """
+    
     d = len(pauliLiearray)
     K_matrices = []
 
@@ -22,9 +36,23 @@ def KCreation(controlOps, pauliLiearray, index_map):
         K_matrices.append(K_k_sparse)
     return K_matrices
 
-#Thisfunction sets the coefficenat of each bassis term in the K matrix
 #Will want to seperte this into dirft and control terms for furture speed up
 def Kupdate(K_matrices, coeffs):
+    """
+    Calculates the K matrix for a set of control coefficants/pulses and their corresponding strcture constant
+
+    Inputs:
+        k_matrices: The list of strcutre constants
+        Coedds: control coefficants 
+    
+    Output:
+        K_total: the K matrix complete
+    
+    Note:
+        Split into drift and control will improve efficeinty
+    """
+
+    #does this seperatly as avoids summing 0 dense matrix with a sparce one
     K_total = K_matrices[0] * coeffs[0] # first term 
 
     for K_k, coeff in zip(K_matrices[1:], coeffs[1:]): # other terms 
@@ -32,21 +60,56 @@ def Kupdate(K_matrices, coeffs):
     return K_total  
 
 
-#Creates the intial vector we want to start with have a sepeate function for this as human input migth get the letters in the wong place
-#is also useful for just populaitng it ie for different cases
-#This is correct!
 
 #calculates the time propogation of the intial operator to the finla time after d timesteps (size of the inital pulse array)
-def propagate_operator_sparse(a_init, control_pulses, dt, K_matrices):
+def propagate_operator_sparse(a_init, control_pulses, dt, K):
+    """
+    Forward propogates the inital vector according to a set of control coefficants.
+    The length of control pulses dictates the total time.
 
+    Inputs
+        a_init: The intial vector 
+        control_pulses: The set of control coefficants for each time step, length controls total control time
+        dt: the timestep of each propogation
+        K: the K matrix used for propogation
+      
+    Outputs
+        forwardsStates: a list containting the propogating vector at each time step
+
+      """
+
+    
     a_t = np.copy(a_init)
+    forwardStates = [a_t]
 
-    for coeffs in control_pulses:
-        K_t_sparse = Kupdate(K_matrices, coeffs)
+    for i, coeffs in enumerate(control_pulses):
+        K_t_sparse = Kupdate(K, coeffs)
 
         # Computes exp(dt * K_t) @ a_t directly and efficiently
         a_t = expm_multiply(dt * K_t_sparse, a_t)
-    return a_t
+
+        forwardStates.append(a_t)
+    return forwardStates
+
+
+def backward_propagate_sparse(a_target, control_pulses, dt, K_matrices):
+    """Same as forward propogating vector but reversed calcualtions then reversing the list at the end to match time=0 at index 0"""
+
+    lambda_t = np.copy(a_target)
+    backward_states = [lambda_t]
+    
+    # Iterate through pulses in reverse
+    for coeffs in reversed(control_pulses):
+        K_t_sparse = Kupdate(K_matrices, coeffs)
+        # Propagate backwards using -dt
+        lambda_t = expm_multiply(-dt * K_t_sparse, lambda_t)
+        
+        backward_states.append(lambda_t)
+
+    # Reverse the list so index 0 corresponds to t=0
+    backward_states.reverse()
+    return backward_states
+
 
 
 # analsysis tool
@@ -83,7 +146,7 @@ K_matrices = KCreation(controlAlgebra_list, pauliLiearray, index_map)
 initial_pulses = np.random.uniform(-0.1, 0.1, size=(Config.Steps, len(controlAlgebra_list)))
 
 #creat the starting objects of the evolution takes index map to match our chosen elements to the right location
-StratingVector = Tools.vectorMaker(["ZI","IZ","ZZ"],[1,1,1], pauliLiearray, index_map)
+StratingVector = Tools.vectorMaker(Config.StartingVectorTerms,Config.StartingVectorcoeff, pauliLiearray, index_map)
 
 
 #final time propogation of everything
@@ -91,8 +154,8 @@ final = propagate_operator_sparse(StratingVector, initial_pulses, Config.Timeste
 
 
 
-TargetVector = Tools.vectorMaker(["XX"],[1],pauliLiearray, index_map)
-print(compute_infidelity(final, TargetVector))
+TargetVector = Tools.vectorMaker(Config.TargetVectorTerms,Config.TargetVectorCoeff,pauliLiearray, index_map)
+print(compute_infidelity(final[-1], TargetVector))
 print(final)
 
 #watch out for captional of lie elements

@@ -1,9 +1,16 @@
-#Problem setup
 
+
+
+#Problem setup
+StartingVectorTerms = ["ZI","IZ","ZZ"]
+StartingVectorcoeff = [1,1,1]
+
+TargetVectorTerms = ["XX"]
+TargetVectorCoeff = [1]
 
 #Evolution properties
 Timestep = 1
-Steps = 1
+Steps = 5
 
 
 

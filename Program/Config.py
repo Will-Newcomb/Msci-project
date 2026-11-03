@@ -1,11 +1,21 @@
+#Problem setup
+
+
+#Evolution properties
+Timestep = 1
+Steps = 1
+
 
 
 #LinearSpinChainSetup
 
 Type = "Z"
 Type2 = "X"
-N=3
+N=2
 activeSystem = "linearSpinChain"
+
+
+
 
 def linearTerms(N, Type):
     base = "I" * N

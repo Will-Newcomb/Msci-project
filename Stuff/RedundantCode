@@ -1,0 +1,25 @@
+
+def cartan_decomposition(lie_algebra):
+    """Split DLA into even-Y (m) and odd-Y (k) terms."""
+    labels = list(lie_algebra)
+
+    m_terms = [
+        p for p in labels if p.count("Y") % 2 == 0
+    ]
+    k_terms = [
+        p for p in labels if p.count("Y") % 2 == 1
+    ]
+
+    return m_terms, k_terms
+
+
+
+
+initial_pulses = np.array([
+    # ZI,   IZ,   XX,   IX,   XI
+    [0.0,  0.0,  0.0,  0.0,  pi/4], # Step 1: Drive XI
+    [0.0,  0.0,  pi/4, 0.0,  0.0 ], # Step 2: Coupling XX
+    [0.0,  pi/4, 0.0,  0.0,  0.0 ], # Step 3: Drive IZ
+    [pi/4, 0.0,  0.0,  0.0,  0.0 ], # Step 4: Drive ZI
+    [0.0,  0.0,  pi/4, 0.0,  0.0 ]  # Step 5: Coupling XX
+])

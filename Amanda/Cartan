@@ -9,18 +9,6 @@ from initial_hamiltonian import (
 )
 
 
-def cartan_decomposition(lie_algebra):
-    """Split DLA into even-Y (m) and odd-Y (k) terms."""
-    labels = list(lie_algebra)
-
-    m_terms = [
-        p for p in labels if p.count("Y") % 2 == 0
-    ]
-    k_terms = [
-        p for p in labels if p.count("Y") % 2 == 1
-    ]
-
-    return m_terms, k_terms
 
 
 def cartan_unitary(angles, k_matrices):

@@ -1,9 +1,5 @@
 from qiskit.quantum_info import Pauli, PauliList
-import Config
 import numpy as np
-
-
-
 
 def DLA(lieAlgebra):
     newLiecomparisons = lieAlgebra.copy()
@@ -83,13 +79,6 @@ def cartanDecomp(lieAlgebra):
     return even_y_terms, odd_y_terms
 
 
-controlAlgebra = { i : Pauli(i) for i in Config.controlSets[Config.activeSystem]}
-
-lieAlgebra = DLA(controlAlgebra)
-index_map, pauli_array = convert(lieAlgebra)
-print(Config.controlSets[Config.activeSystem][0])
-strcture = get_structure_constant(pauli_array,Config.controlSets[Config.activeSystem][0], index_map )
-print(strcture)
 
 
 

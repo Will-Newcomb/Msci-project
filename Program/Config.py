@@ -1,50 +1,38 @@
 import numpy as np
+import Tools
+
+#System properties
+activeSystem = "linearSpinChain"
+NQubits=50
 
 #Evolution properties
 Timestep = 0.1
 Steps = 70
 
-
-
-#LinearSpinChainSetup
-
-Type = "Z"
-Type2 = "X"
-N=5
-activeSystem = "linearSpinChain"
-
-
-
-
-def linearTerms(N, Type):
-    base = "I" * N
-    return [base[:i] + Type + base[i+1:] for i in range(N)]
-
-def interactionTerms(N, Type):
-    base = "I" * N
-    type2 = Type * 2
-    return [base[:i] + type2 + base[i+2:] for i in range(N - 1)]
-
-
-
-driftSets = {
-    "linearSpinChain": interactionTerms(N, Type2) 
-}
-
-controlSets = {
-    "linearSpinChain": linearTerms(N,Type)+["I"*(N-1)+Type2]+[Type2+"I"*(N-1)]
-}
-
-
+#LinearSpinChainProperties
+singleControlType = "Z"
+interactionType = "X"
+endChainType = "X"
+driftCoeff=1
 
 
 #Problem setup
-StartingVectorTerms = linearTerms(N,Type)
-StartingVectorcoeff = np.ones(N)
+StartingVectorTerms = Tools.linearTerms(NQubits,singleControlType)
+StartingVectorcoeff = np.ones(NQubits)
+
+TargetVectorTerms = Tools.interactionTerms(NQubits, interactionType) + ["Z"*NQubits]
+TargetVectorCoeff = -np.ones(NQubits)
+
+
+#Sets of different system artichetures
+driftSets = {
+    "linearSpinChain": Tools.interactionTerms(NQubits, interactionType) 
+}
+
+controlSets = {
+    "linearSpinChain": Tools.linearTerms(NQubits,singleControlType)+["I"*(NQubits-1)+endChainType]+[endChainType+"I"*(NQubits-1)]
+}
 
 
 
-TargetVectorTerms = interactionTerms(N, Type2) + ["Z"*N]
-TargetVectorCoeff = -np.ones(N)
 
-driftCoeff=1

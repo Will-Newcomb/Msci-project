@@ -7,6 +7,9 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import expm_multiply
 from math import pi
 import Tools
+from scipy.optimize import minimize
+import tqdm as tqdm
+import matplotlib.pyplot as plt
 
 #note to self the index map and list ordering match
 
@@ -169,6 +172,30 @@ def compute_infidelity(a_final, a_target):
     return 1.0 - (np.dot(a_final, a_target) / norm_target_sq)
 
 
+
+
+def optimizationloop(falt_pulses, a_init, a_target, dt, Kdrift, Kcontrol, steps, num_controls):
+    #scipy only takes flat pulses so have to remake them into 2d array for our functions
+    current_pulses = falt_pulses.reshape((steps, num_controls))
+
+    #forward propogate according to our new or inital pulses
+    forwardsprop = propagate_operator_sparse(a_init, current_pulses, dt, Kdrift, Kcontrol)
+
+    #calculate the infedility of our function
+    current_infidelity = compute_infidelity(forwardsprop[-1], a_target)
+
+    #calculate the backwards propogated states
+    backwardprop = backward_propagate_sparse(a_target, current_pulses, dt, Kdrift, Kcontrol)
+
+    #calculate the gradient
+    grad_2d = gradientCalc(dt, Kdrift, Kcontrol, forwardsprop, backwardprop, current_pulses)
+
+    #have to flattern gradient again for scipy
+    return current_infidelity, grad_2d.flatten()
+
+
+
+
 # --- Initialization and DLA Setup ---
 
 
@@ -204,19 +231,36 @@ initial_pulses = np.random.uniform(-0.1, 0.1, size=(Config.Steps, len(controlAlg
 
 #creat the starting objects of the evolution takes index map to match our chosen elements to the right location
 StratingVector = Tools.vectorMaker(Config.StartingVectorTerms,Config.StartingVectorcoeff, pauliLiearray, index_map)
-
-
-#final time propogation of everything
-forwardsprop = propagate_operator_sparse(StratingVector, initial_pulses, Config.Timestep, kDrift, K_control_matrices)
-
 TargetVector = Tools.vectorMaker(Config.TargetVectorTerms,Config.TargetVectorCoeff,pauliLiearray, index_map)
 
-backwardsprop = backward_propagate_sparse(TargetVector, initial_pulses, Config.Timestep, kDrift, K_control_matrices)
+flat_initial_guess = initial_pulses.flatten()
 
-gradient = gradientCalc(Config.Timestep, kDrift, K_control_matrices,forwardsprop,backwardsprop,initial_pulses )
+#needed for the minimse funciton to recreat our 2d array apprently it just dosent take them but uses them?
+num_controls = len(controlAlgebra_list)
 
-print(gradient)
-print(compute_infidelity(forwardsprop[-1], TargetVector))
+result = minimize(
+    fun=optimizationloop,
+    x0=flat_initial_guess,
+    args=(StratingVector, TargetVector, Config.Timestep, kDrift, K_control_matrices, Config.Steps, num_controls),
+    method='L-BFGS-B',
+    jac=True, # Tells SciPy that our wrapper returns the gradient as the second output
+    options={'maxiter': 1000}
+)
 
-#watch out for captional of lie elements
-#seems to work for 2 qbit case
+
+optimized_pulses = result.x.reshape((Config.Steps, num_controls))
+final_infidelity = result.fun
+
+timeaxis = np.linspace(0,Config.Timestep*Config.Steps,Config.Steps)
+print(len(timeaxis))
+plt.plot(timeaxis,optimized_pulses[:, 1])
+plt.plot(timeaxis,optimized_pulses[:, 0])
+
+plt.plot(timeaxis,optimized_pulses[:, 2])
+
+plt.plot(timeaxis,optimized_pulses[:, 3])
+
+
+
+plt.show()
+print(final_infidelity)

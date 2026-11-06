@@ -2,16 +2,16 @@
 
 
 #Problem setup
-StartingVectorTerms = ["ZI","IZ","ZZ"]
+StartingVectorTerms = ["ZII","IIZ","IZI"]
 StartingVectorcoeff = [1,1,1]
 
-TargetVectorTerms = ["XX"]
-TargetVectorCoeff = [1]
+TargetVectorTerms = ["IXX","XXI","ZZZ"]
+TargetVectorCoeff = [-1,-1,-1]
 
 g=1
 #Evolution properties
-Timestep = 1
-Steps = 5
+Timestep = 0.1
+Steps = 50
 
 
 
@@ -19,7 +19,7 @@ Steps = 5
 
 Type = "Z"
 Type2 = "X"
-N=2
+N=3
 activeSystem = "linearSpinChain"
 
 

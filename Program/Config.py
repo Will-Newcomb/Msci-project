@@ -8,6 +8,7 @@ StartingVectorcoeff = [1,1,1]
 TargetVectorTerms = ["XX"]
 TargetVectorCoeff = [1]
 
+g=1
 #Evolution properties
 Timestep = 1
 Steps = 5
@@ -34,6 +35,11 @@ def interactionTerms(N, Type):
     return [base[:i] + type2 + base[i+2:] for i in range(N - 1)]
 
 
+
+driftSets = {
+    "linearSpinChain": interactionTerms(N, Type2) 
+}
+
 controlSets = {
-    "linearSpinChain": linearTerms(N,Type)+interactionTerms(N,Type2)+["I"*(N-1)+Type2]+[Type2+"I"*(N-1)]
+    "linearSpinChain": linearTerms(N,Type)+["I"*(N-1)+Type2]+[Type2+"I"*(N-1)]
 }

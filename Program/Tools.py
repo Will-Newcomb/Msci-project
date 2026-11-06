@@ -1,5 +1,9 @@
 import numpy as np
 
+
+#Creates the intial vector we want to start with have a sepeate function for this as human input migth get the letters in the wong place
+#is also useful for just populaitng it ie for different cases
+#This is correct!
 def vectorMaker(targetOps, coeffs, pauliLiearray, index_map):
     #0 vector calculation
     d = len(pauliLiearray)

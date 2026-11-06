@@ -1,17 +1,8 @@
+import numpy as np
 
-
-
-#Problem setup
-StartingVectorTerms = ["ZII","IIZ","IZI"]
-StartingVectorcoeff = [1,1,1]
-
-TargetVectorTerms = ["IXX","XXI","ZZZ"]
-TargetVectorCoeff = [-1,-1,-1]
-
-g=1
 #Evolution properties
 Timestep = 0.1
-Steps = 50
+Steps = 70
 
 
 
@@ -19,7 +10,7 @@ Steps = 50
 
 Type = "Z"
 Type2 = "X"
-N=3
+N=5
 activeSystem = "linearSpinChain"
 
 
@@ -43,3 +34,17 @@ driftSets = {
 controlSets = {
     "linearSpinChain": linearTerms(N,Type)+["I"*(N-1)+Type2]+[Type2+"I"*(N-1)]
 }
+
+
+
+
+#Problem setup
+StartingVectorTerms = linearTerms(N,Type)
+StartingVectorcoeff = np.ones(N)
+
+
+
+TargetVectorTerms = interactionTerms(N, Type2) + ["Z"*N]
+TargetVectorCoeff = -np.ones(N)
+
+driftCoeff=1

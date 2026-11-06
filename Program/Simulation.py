@@ -40,7 +40,7 @@ def KCreation(controlOps, pauliLiearray, index_map):
     return K_matrices
 
 #Will want to seperte this into dirft and control terms for furture speed up
-def Kupdate(K_matrices, coeffs):
+def Kupdate(KBasis, coeffs):
     """
     Calculates the K matrix for a set of control coefficants/pulses and their corresponding strcture constant
 
@@ -56,9 +56,9 @@ def Kupdate(K_matrices, coeffs):
     """
 
     #does this seperatly as avoids summing 0 dense matrix with a sparce one
-    K_total = K_matrices[0] * coeffs[0] # first term 
+    K_total = KBasis[0] * coeffs[0] # first term 
 
-    for K_k, coeff in zip(K_matrices[1:], coeffs[1:]): # other terms 
+    for K_k, coeff in zip(KBasis[1:], coeffs[1:]): # other terms 
         K_total = K_total + (coeff * K_k)
     return K_total  
 
@@ -120,7 +120,7 @@ def DriftK(K, g):
 
 import numpy as np
 
-def gradientCalc(timestep, Kdrift ,controlK, forwardprop, backwardprop, control_pulses):
+def gradientCalc(timestep, Kdrift ,Kcontrol, forwardprop, backwardprop, control_pulses):
     """
     Calculates the gradient using the second-order approximation.
     Reconstructs K_l on the fly by adding the drift and active controls.
@@ -128,23 +128,22 @@ def gradientCalc(timestep, Kdrift ,controlK, forwardprop, backwardprop, control_
     #number of time steps
     steps = len(control_pulses)
     #creating 0 matrix for gradient of every control at every time step
-    num_controls = len(controlK)
+    num_controls = len(Kcontrol)
     grad = np.zeros((steps, num_controls))
     
     for l in range(steps):
 
         a_l = forwardprop[l]
-        b_l_plus_1 = backwardprop[l+1]
-        
+
         # Reconstruct the total K_l matrix for this specific time step[cite: 16]
-        K_t_control = Kupdate(controlK, control_pulses[l])
+        K_t_control = Kupdate(Kcontrol, control_pulses[l])
         K_l = Kdrift + K_t_control 
         
         # Precompute K_l @ a_l once per time step for efficiency
         K_l_a = K_l.dot(a_l)
         
         for k in range(num_controls):
-            K_k_c = controlK[k]
+            K_k_c = Kcontrol[k]
             
             # 1. First order term applied to a_l: K_k^c @ a_l
             K_k_a = K_k_c.dot(a_l)
@@ -156,7 +155,7 @@ def gradientCalc(timestep, Kdrift ,controlK, forwardprop, backwardprop, control_
             derivative_a = (timestep * K_k_a) - (0.5 * (timestep ** 2) * commutator_a)
             
             # 4. Final gradient calculation[cite: 22]
-            grad[l, k] = -np.dot(b_l_plus_1, derivative_a)
+            grad[l, k] = -np.dot(backwardprop[l], derivative_a)
     return grad
 
 # analsysis tool
@@ -199,15 +198,19 @@ def optimizationloop(falt_pulses, a_init, a_target, dt, Kdrift, Kcontrol, steps,
 # --- Initialization and DLA Setup ---
 
 
+timestep = Config.Timestep
+steps = Config.Steps
+activeSystem = Config.activeSystem
+
 
 
 # Generate control excluding drift terms
-controlAlgebra_dict = {i: Pauli(i) for i in Config.controlSets[Config.activeSystem]}
+controlAlgebra_dict = {i: Pauli(i) for i in Config.controlSets[activeSystem]}
 controlAlgebra_list = list(controlAlgebra_dict.values())
 
 
 #take set of drift terms
-DriftAlgebra_dict = {i: Pauli(i) for i in Config.driftSets[Config.activeSystem]}
+DriftAlgebra_dict = {i: Pauli(i) for i in Config.driftSets[activeSystem]}
 DriftAlgebra_list = list(DriftAlgebra_dict.values())
 
 #generate full DLA by combing the dictonarys and keep a list of them with an index mapping for quick checks
@@ -222,18 +225,18 @@ K_drift_matrices = KCreation(DriftAlgebra_list, pauliLiearray, index_map)
 K_control_matrices = KCreation(controlAlgebra_list, pauliLiearray, index_map)
 
 #summing all the drift k matrices
-kDrift = DriftK(K_drift_matrices,Config.g)
+kDrift = DriftK(K_drift_matrices,Config.driftCoeff)
 
 
 #create the inital 2d guess array for the basis elemnts of the K matrix ie arrys of guessed values for d time steps
 #arrays of size steps and then one value for eahc contorl element
-initial_pulses = np.random.uniform(-0.1, 0.1, size=(Config.Steps, len(controlAlgebra_list)))
+initial_pulses = np.random.uniform(-0.1, 0.1, size=(steps, len(controlAlgebra_list)))
+flat_initial_guess = initial_pulses.flatten()
 
 #creat the starting objects of the evolution takes index map to match our chosen elements to the right location
 StratingVector = Tools.vectorMaker(Config.StartingVectorTerms,Config.StartingVectorcoeff, pauliLiearray, index_map)
 TargetVector = Tools.vectorMaker(Config.TargetVectorTerms,Config.TargetVectorCoeff,pauliLiearray, index_map)
 
-flat_initial_guess = initial_pulses.flatten()
 
 #needed for the minimse funciton to recreat our 2d array apprently it just dosent take them but uses them?
 num_controls = len(controlAlgebra_list)
@@ -241,17 +244,17 @@ num_controls = len(controlAlgebra_list)
 result = minimize(
     fun=optimizationloop,
     x0=flat_initial_guess,
-    args=(StratingVector, TargetVector, Config.Timestep, kDrift, K_control_matrices, Config.Steps, num_controls),
+    args=(StratingVector, TargetVector, timestep, kDrift, K_control_matrices, steps, num_controls),
     method='L-BFGS-B',
     jac=True, # Tells SciPy that our wrapper returns the gradient as the second output
     options={'maxiter': 1000}
 )
 
 
-optimized_pulses = result.x.reshape((Config.Steps, num_controls))
+optimized_pulses = result.x.reshape((steps, num_controls))
 final_infidelity = result.fun
 
-timeaxis = np.linspace(0,Config.Timestep*Config.Steps,Config.Steps)
+timeaxis = np.linspace(0,timestep*steps,steps)
 print(len(timeaxis))
 plt.plot(timeaxis,optimized_pulses[:, 1])
 plt.plot(timeaxis,optimized_pulses[:, 0])

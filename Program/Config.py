@@ -3,7 +3,7 @@ import Tools
 
 #System properties
 activeSystem = "linearSpinChain"
-NQubits=50
+NQubits=10
 
 #Evolution properties
 Timestep = 0.1

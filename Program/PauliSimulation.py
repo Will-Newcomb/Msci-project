@@ -21,8 +21,8 @@ def ComputeHam(Hdrift, HcontrolTerms, HControlCoeff):
 
     H_total = Hdrift
 
-    for H_c, coeff in zip(HcontrolTerms, HControlCoeff):
-        H_total = H_total + (coeff * H_c)  
+
+    H_total = H_total + SparsePauliOp(HcontrolTerms,coeffs=HControlCoeff)  
 
     return H_total.simplify(atol=1e-10)
 
@@ -119,7 +119,7 @@ def compute_gradient_2nd_order_matrix_free(forwardprop, backwardprop, current_pu
         K_l_A = computeOperatorGradient(Htotal, A_l)
         
         for k in range(num_controls):
-            H_control_k = H_control_list[k]
+            H_control_k = SparsePauliOp(H_control_list[k])
 
             # 1. First order term: i[H_k^c, A_l]
             first_order_A = computeOperatorGradient(H_control_k, A_l)

@@ -1,0 +1,108 @@
+import numpy as np
+from scipy.optimize import least_squares
+from qiskit.quantum_info import SparsePauliOp
+from TargetHamiltonian import make_operator, spectrum, compare_spectra
+
+
+def cartan_partition(dla):
+    labels = list(dla.keys()) if isinstance(dla, dict) else [str(p) for p in dla]
+    m = [p for p in labels if p.count('Y') % 2 == 0]
+    k = [p for p in labels if p.count('Y') % 2 == 1]
+    return m, k
+
+
+def pauli_commutes(a, b):
+    return sum(x != y and x != 'I' and y != 'I' for x, y in zip(a, b)) % 2 == 0
+
+
+def maximal_commuting_subspace(m_terms, preferred=None):
+    labels = list(dict.fromkeys(m_terms))
+    if not labels:
+        raise ValueError('Empty Cartan m subspace.')
+    n = len(labels[0])
+    identity = 'I' * n
+    labels = [p for p in labels if p != identity]
+    preferred = [] if preferred is None else list(preferred)
+    if any(p not in labels for p in preferred):
+        raise ValueError('Preferred operators must belong to m.')
+    if any(not pauli_commutes(a, b) for a in preferred for b in preferred):
+        raise ValueError('Preferred operators do not commute.')
+    chosen = preferred.copy()
+    for p in labels:
+        if p not in chosen and all(pauli_commutes(p, q) for q in chosen):
+            chosen.append(p)
+    return chosen
+
+
+def verify_maximal_commuting(h_terms, m_terms):
+    h_terms = list(h_terms)
+    m_terms = list(m_terms)
+    commuting = all(pauli_commutes(p, q) for p in h_terms for q in h_terms)
+    extendable = [p for p in m_terms if p not in h_terms and all(pauli_commutes(p, q) for q in h_terms)]
+    return {'commuting': commuting, 'maximal_by_inclusion': commuting and not extendable,
+            'additional_commuting_terms': extendable}
+
+
+def construct_initial_hamiltonian(coefficients, h_terms):
+    return make_operator(h_terms, coefficients)
+
+
+def fit_initial_spectrum(target, h_terms, n_starts=8, seed=7, max_nfev=2000,
+                         max_dimension=256, tolerance=1e-7):
+    n = target.num_qubits
+    dim = 2 ** n
+    if dim > max_dimension:
+        raise ValueError('Exact spectral fitting is restricted to <=8 qubits. '
+                         'For 10 qubits use a scalable Cartan-conjugation/control optimisation.')
+    if not h_terms or any(len(p) != n for p in h_terms):
+        raise ValueError('Cartan terms have incorrect length.')
+    if any(not pauli_commutes(p, q) for p in h_terms for q in h_terms):
+        raise ValueError('Cartan terms must commute.')
+    target_eigenvalues = spectrum(target, full=True)
+    diagonal_signs = np.stack([np.real(np.diag(SparsePauliOp(p).to_matrix())) for p in h_terms], axis=1)
+    if not np.all(np.isin(diagonal_signs, [-1, 1])):
+        raise ValueError('This spectral fitter requires diagonal Z/I Cartan terms.')
+    rng = np.random.default_rng(seed)
+    scale = max(float(np.std(target_eigenvalues)), 0.1)
+
+    def residual(c):
+        return np.sort(diagonal_signs @ c) - target_eigenvalues
+
+    best = None
+    for run in range(n_starts):
+        x0 = np.zeros(len(h_terms)) if run == 0 else rng.normal(0, scale, len(h_terms))
+        result = least_squares(residual, x0, max_nfev=max_nfev)
+        error = float(np.linalg.norm(result.fun) / np.sqrt(dim))
+        if best is None or error < best['rms_spectral_error']:
+            best = {'coefficients': result.x, 'rms_spectral_error': error,
+                    'optimizer_success': bool(result.success)}
+        if error <= tolerance:
+            break
+    best['K0'] = construct_initial_hamiltonian(best['coefficients'], h_terms)
+    best['spectrally_compatible'] = best['rms_spectral_error'] <= tolerance
+    best['spectral_comparison'] = compare_spectra(best['K0'], target, max_dimension=max_dimension)
+    best['unitary_constructed'] = False
+    return best
+
+
+if __name__ == '__main__':
+    import Config
+    from TargetHamiltonian import target_from_config
+    from qiskit.quantum_info import Pauli
+    import DLA_Cartan_Strcture as dla
+    seed_terms = Config.driftSets[Config.activeSystem] + Config.controlSets[Config.activeSystem]
+    if Config.NQubits > 4:
+        raise SystemExit('Run the Cartan basis example at NQubits=3 or 4; full DLA generation grows rapidly.')
+    algebra = dla.DLA({p: Pauli(p) for p in seed_terms})
+    m, k = cartan_partition(algebra)
+    h = maximal_commuting_subspace(m, preferred=Config.StartingVectorTerms)
+    print('DLA size:', len(algebra), 'm:', len(m), 'k:', len(k))
+    print('Commuting Cartan basis:', h)
+    print('Verification:', verify_maximal_commuting(h, m))
+    if all(set(p) <= {'I', 'Z'} for p in h):
+        result = fit_initial_spectrum(target_from_config(), h)
+        print('Initial coefficients:', result['coefficients'])
+        print('RMS spectral error:', result['rms_spectral_error'])
+        print('Compatible:', result['spectrally_compatible'])
+    else:
+        print('Selected Cartan basis is not diagonal; spectral fitting requires a different basis or joint unitary optimisation.')

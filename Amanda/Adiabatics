@@ -1,0 +1,94 @@
+import numpy as np
+from scipy.sparse.linalg import eigsh, expm_multiply
+from TargetHamiltonian import sparse_matrix, ground_state
+
+
+def interpolation(s, schedule='linear'):
+    if not 0 <= s <= 1:
+        raise ValueError('s must be in [0,1].')
+    if schedule == 'linear':
+        return s
+    if schedule == 'smoothstep':
+        return 3*s*s - 2*s*s*s
+    raise ValueError('Unknown schedule.')
+
+
+def adiabatic_hamiltonian(H_initial, H_target, s, H_bridge=None,
+                          bridge_strength=0.0, schedule='linear'):
+    if H_initial.shape != H_target.shape:
+        raise ValueError('Hamiltonian dimensions differ.')
+    weight = interpolation(s, schedule)
+    H = (1 - weight) * H_initial + weight * H_target
+    if H_bridge is not None:
+        H = H + bridge_strength * 4*s*(1-s) * H_bridge
+    return H.tocsr()
+
+
+def lowest_two_eigenvalues(H):
+    if H.shape[0] <= 4:
+        return np.linalg.eigvalsh(H.toarray())[:2]
+    vals = eigsh(H, k=2, which='SA', return_eigenvectors=False, tol=1e-9)
+    return np.sort(np.real(vals))
+
+
+def gap_scan(initial_operator, target_operator, n_points=51,
+             bridge_operator=None, bridge_strength=0.0, schedule='linear'):
+    HI = sparse_matrix(initial_operator)
+    HT = sparse_matrix(target_operator)
+    HB = None if bridge_operator is None else sparse_matrix(bridge_operator)
+    s_values = np.linspace(0, 1, n_points)
+    gaps = []
+    for s in s_values:
+        H = adiabatic_hamiltonian(HI, HT, s, HB, bridge_strength, schedule)
+        e0, e1 = lowest_two_eigenvalues(H)
+        gaps.append(float(e1 - e0))
+    gaps = np.asarray(gaps)
+    return {'s': s_values, 'gaps': gaps,
+            'minimum_gap': float(gaps.min()), 'minimum_gap_s': float(s_values[gaps.argmin()])}
+
+
+def evolve_adiabatically(initial_operator, target_operator, total_time,
+                          steps=200, bridge_operator=None, bridge_strength=0.0,
+                          schedule='linear', initial_state=None, return_history=False):
+    if total_time <= 0 or steps < 1:
+        raise ValueError('total_time and steps must be positive.')
+    HI = sparse_matrix(initial_operator)
+    HT = sparse_matrix(target_operator)
+    HB = None if bridge_operator is None else sparse_matrix(bridge_operator)
+    psi = ground_state(initial_operator)['state'] if initial_state is None else np.asarray(initial_state, complex)
+    psi = psi / np.linalg.norm(psi)
+    dt = total_time / steps
+    history = [psi.copy()] if return_history else None
+    for step in range(steps):
+        s_mid = (step + 0.5) / steps
+        H_mid = adiabatic_hamiltonian(HI, HT, s_mid, HB, bridge_strength, schedule)
+        psi = expm_multiply(-1j * dt * H_mid, psi)
+        psi /= np.linalg.norm(psi)
+        if return_history:
+            history.append(psi.copy())
+    target_data = ground_state(target_operator)
+    if target_data['ground_degenerate']:
+        fidelity = None
+    else:
+        fidelity = float(abs(np.vdot(target_data['state'], psi)) ** 2)
+    result = {'final_state': psi, 'fidelity': fidelity,
+              'target_ground_degenerate': target_data['ground_degenerate'],
+              'total_time': float(total_time), 'steps': int(steps)}
+    if return_history:
+        result['history'] = history
+    return result
+
+
+def scan_times(initial_operator, target_operator, times, steps=200, **kwargs):
+    return [{'time': float(T), **evolve_adiabatically(
+        initial_operator, target_operator, float(T), steps=steps, **kwargs)}
+        for T in times]
+
+
+if __name__ == '__main__':
+    from TargetHamiltonian import target_from_config, initial_from_config
+    target = target_from_config()
+    initial = initial_from_config()
+    print('Gap:', gap_scan(initial, target, n_points=21)['minimum_gap'])
+    for result in scan_times(initial, target, [2.0, 5.0, 10.0], steps=100):
+        print('T =', result['time'], 'fidelity =', result['fidelity'])

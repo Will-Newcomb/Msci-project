@@ -1,0 +1,100 @@
+"""
+Constructs the target from Config.py, calculates its ground state, energy gap and spectrum, and checks DLA membership and spectral 
+compatibility.
+"""
+
+import numpy as np
+from scipy.sparse import csr_matrix
+from scipy.sparse.linalg import eigsh
+from qiskit.quantum_info import SparsePauliOp
+import Config
+
+
+def make_operator(terms, coefficients, n=None):
+    terms = list(terms)
+    coefficients = np.asarray(coefficients, dtype=complex)
+    if not terms or len(terms) != len(coefficients):
+        raise ValueError('Terms and coefficients must have the same nonzero length.')
+    n = len(terms[0]) if n is None else n
+    if any(len(p) != n for p in terms):
+        raise ValueError('Every Pauli string must have length n.')
+    return SparsePauliOp(terms, coeffs=coefficients).simplify()
+
+
+def target_from_config():
+    return make_operator(Config.TargetVectorTerms, Config.TargetVectorCoeff, Config.NQubits)
+
+
+def initial_from_config():
+    return make_operator(Config.StartingVectorTerms, Config.StartingVectorcoeff, Config.NQubits)
+
+
+def sparse_matrix(operator):
+    return operator.to_matrix(sparse=True).tocsr()
+
+
+def ground_state(operator, degeneracy_tolerance=1e-8):
+    H = sparse_matrix(operator)
+    dim = H.shape[0]
+    if dim <= 4:
+        values, vectors = np.linalg.eigh(H.toarray())
+        values, vectors = values[:min(2,dim)], vectors[:, :min(2,dim)]
+    else:
+        values, vectors = eigsh(H, k=2, which='SA', tol=1e-10)
+        order = np.argsort(values)
+        values, vectors = values[order], vectors[:, order]
+    gap = float(np.real(values[1] - values[0])) if len(values) > 1 else np.nan
+    return {'energy': float(np.real(values[0])), 'state': vectors[:, 0],
+            'gap': gap, 'ground_degenerate': bool(gap < degeneracy_tolerance)}
+
+
+def spectrum(operator, full=False, k=6):
+    H = sparse_matrix(operator)
+    dim = H.shape[0]
+    if full or dim <= max(8, k + 1):
+        if dim > 256:
+            raise ValueError('Full spectrum disabled above 8 qubits; use full=False.')
+        return np.linalg.eigvalsh(H.toarray())
+    k = min(k, dim - 2)
+    return np.sort(eigsh(H, k=k, which='SA', return_eigenvectors=False))
+
+
+def check_dla_membership(operator, index_map, tol=1e-10):
+    missing = [(str(p), complex(c)) for p, c in zip(operator.paulis, operator.coeffs)
+               if abs(c) > tol and str(p) not in index_map]
+    return {'in_dla': not missing, 'missing_terms': missing}
+
+
+def compare_spectra(first, second, max_dimension=256, tol=1e-8):
+    if first.num_qubits != second.num_qubits:
+        raise ValueError('Hamiltonians must act on the same number of qubits.')
+    dim = 2 ** first.num_qubits
+    if dim > max_dimension:
+        return {'compatible': None, 'max_difference': None,
+                'reason': 'Full spectral comparison skipped for this system size.'}
+    a = spectrum(first, full=True)
+    b = spectrum(second, full=True)
+    difference = float(np.max(np.abs(a - b)))
+    return {'compatible': difference <= tol, 'max_difference': difference,
+            'spectrum_first': a, 'spectrum_second': b}
+
+
+def analyse_target(operator=None, index_map=None):
+    operator = target_from_config() if operator is None else operator
+    result = {'num_qubits': operator.num_qubits,
+              'terms': [(str(p), complex(c)) for p, c in zip(operator.paulis, operator.coeffs)],
+              'ground_state': ground_state(operator),
+              'lowest_energies': spectrum(operator)}
+    if index_map is not None:
+        result['dla_membership'] = check_dla_membership(operator, index_map)
+    return result
+
+
+if __name__ == '__main__':
+    target = target_from_config()
+    analysis = analyse_target(target)
+    print('Qubits:', analysis['num_qubits'])
+    print('Ground energy:', analysis['ground_state']['energy'])
+    print('Ground gap:', analysis['ground_state']['gap'])
+    print('Lowest energies:', analysis['lowest_energies'])
+    print('Config initial vs target:', compare_spectra(initial_from_config(), target))

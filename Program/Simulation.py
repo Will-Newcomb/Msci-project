@@ -145,7 +145,7 @@ def gradientCalc(timestep, Kdrift ,Kcontrol, forwardprop, backwardprop, control_
             derivative_a = (timestep * K_k_a) - (0.5 * (timestep ** 2) * commutator_a)
             
             # 4. Final gradient calculation[cite: 22]
-            grad[l, k] = -np.dot(backwardprop[l], derivative_a)
+            grad[l, k] = -np.dot(backwardprop[l], derivative_a) / np.dot(backwardprop[-1], backwardprop[-1])
     return grad
 
 # analsysis tool

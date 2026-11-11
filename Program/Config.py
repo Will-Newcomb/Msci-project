@@ -3,11 +3,11 @@ import Tools
 
 #System properties
 activeSystem = "linearSpinChain"
-NQubits=10
+NQubits=4
 
 #Evolution properties
-Timestep = 0.1
-Steps = 70
+Timestep = 0.08
+Steps = 100
 
 #LinearSpinChainProperties
 singleControlType = "Z"

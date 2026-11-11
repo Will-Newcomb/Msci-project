@@ -72,13 +72,18 @@ def main():
 
     timeaxis = np.linspace(0,timestep*steps,steps)
     print(len(timeaxis))
-    plt.plot(timeaxis,optimized_pulses[:, 1])
-    plt.plot(timeaxis,optimized_pulses[:, 0])
+    print(controlAlgebra_list)
+    plt.plot(timeaxis,optimized_pulses[:, 1], label = controlAlgebra_list[1].to_label())
+    plt.plot(timeaxis,optimized_pulses[:, 0], label = controlAlgebra_list[0].to_label())
+    plt.plot(timeaxis,optimized_pulses[:, 2], label = controlAlgebra_list[2].to_label())
+    plt.plot(timeaxis,optimized_pulses[:, 3], label = controlAlgebra_list[3].to_label())
+    plt.legend()
+    plt.show()
 
-    plt.plot(timeaxis,optimized_pulses[:, 2])
 
-    plt.plot(timeaxis,optimized_pulses[:, 3])
-
+    plt.plot(timeaxis,optimized_pulses[:, 4], label = controlAlgebra_list[4].to_label())
+    plt.plot(timeaxis,optimized_pulses[:, 5], label = controlAlgebra_list[5].to_label())
+    plt.legend()
 
 
     plt.show()

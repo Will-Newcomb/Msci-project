@@ -23,3 +23,21 @@ initial_pulses = np.array([
     [pi/4, 0.0,  0.0,  0.0,  0.0 ], # Step 4: Drive ZI
     [0.0,  0.0,  pi/4, 0.0,  0.0 ]  # Step 5: Coupling XX
 ])
+
+
+
+
+#final time propogation of everything
+forwardsprop = propagate_operator_sparse(StratingVector, initial_pulses, Config.Timestep, kDrift, K_control_matrices)
+
+TargetVector = Tools.vectorMaker(Config.TargetVectorTerms,Config.TargetVectorCoeff,pauliLiearray, index_map)
+
+backwardsprop = backward_propagate_sparse(TargetVector, initial_pulses, Config.Timestep, kDrift, K_control_matrices)
+
+gradient = gradientCalc(Config.Timestep, kDrift, K_control_matrices,forwardsprop,backwardsprop,initial_pulses )
+
+print(gradient)
+print(compute_infidelity(forwardsprop[-1], TargetVector))
+
+#watch out for captional of lie elements
+#seems to work for 2 qbit case

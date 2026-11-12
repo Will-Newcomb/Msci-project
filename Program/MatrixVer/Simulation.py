@@ -1,4 +1,4 @@
-import DLA_Cartan_Strcture as dla
+import MatrixVer.DLA_Cartan_Strcture as dla
 import numpy as np
 from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import expm_multiply
@@ -182,4 +182,37 @@ def optimizationloop(falt_pulses, a_init, a_target, dt, Kdrift, Kcontrol, steps,
     #have to flattern gradient again for scipy
     return current_infidelity, grad_2d.flatten()
 
+import numpy as np
+from qiskit.quantum_info import SparsePauliOp
 
+def compute_ground_state_infidelity_dla(a_final_vec, a_target_vec, pauli_strings):
+    """
+    Reconstructs the operator matrices from DLA coordinate vectors, extracts 
+    their ground states, and computes the state infidelity.
+    
+    Inputs:
+        a_final_vec: 1D numpy array of the final operator in the DLA basis
+        a_target_vec: 1D numpy array of the target operator in the DLA basis
+        pauli_strings: List of Pauli strings in the EXACT order matching the DLA indices
+    """
+    # 1. Reconstruct the Qiskit operators using your DLA coefficients and Pauli list
+    A_final = SparsePauliOp(pauli_strings, a_final_vec)
+    A_target = SparsePauliOp(pauli_strings, a_target_vec)
+    
+    # 2. Convert to matrices
+    matrix_final = A_final.to_matrix()
+    matrix_target = A_target.to_matrix()
+    
+    # 3. Diagonalize to find eigenvalues and eigenvectors
+    evals_final, evecs_final = np.linalg.eigh(matrix_final)
+    evals_target, evecs_target = np.linalg.eigh(matrix_target)
+    
+    # 4. Extract the ground state vector 
+    gs_final = evecs_final[:, 0]
+    gs_target = evecs_target[:, 0]
+    
+    # 5. Compute state infidelity: 1 - |<psi_final | psi_target>|^2
+    overlap = np.vdot(gs_final, gs_target)
+    state_infidelity = 1.0 - (np.abs(overlap) ** 2)
+    
+    return state_infidelity

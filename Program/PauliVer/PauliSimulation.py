@@ -1,6 +1,3 @@
-
-import numpy as np
-import Config
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
@@ -9,63 +6,45 @@ from qiskit.quantum_info import SparsePauliOp
 
 #THESE 4 FUNCTIONS TAKE YOUR HAMTILTIAN AND OPERATOR AND CALCULATE THE TIME EVOLUTION OF THE OPERATOR ACCORDING TO HEISNBERGS EQUATION USING RUNGE KUTTA
 #creates an inital operator as a pauli object
-def create_initial_operator():
-
-    pauli_strings = Config.StartingVectorTerms
-    coeffs = Config.StartingVectorcoeff
-
-    return SparsePauliOp(pauli_strings, coeffs)
 
 #calculates the total hamiltian taking the drift hamtilian already multipled by its interaction strength and each control term to multiply by its coeff
 def ComputeHam(Hdrift, HcontrolTerms, HControlCoeff):
 
     H_total = Hdrift
-
-
     H_total = H_total + SparsePauliOp(HcontrolTerms,coeffs=HControlCoeff)  
 
-    return H_total.simplify(atol=1e-10)
+    return H_total.simplify()
 
 #calculates the time derative of the invarient operator using its EOM
-def computeOperatorGradient(Hamiltonian, InvarientOp):
+def computeCommutator(Hamiltonian, InvarientOp):
 
     commutator = (Hamiltonian @ InvarientOp) - (InvarientOp @ Hamiltonian)
     
-    return (-1j * commutator).simplify(atol=1e-10)
+    return (-1j * commutator).simplify()
 
 
-def propagate_step_rk4_matrix_free(A_t, H_drift, H_control_list, control_coeffs, dt, threshold=1e-10):
+
+#This computes the transfrom propgaiton by taylor expanding the expoenential and then using the fact DA/Dt equals the commutator with H terms and then taking the coefficants
+#it applied k^A by using K(KA) where KA is a new A vector
+#order is how many terms deep it goes might want to check that
+def propagate_step_exp(A_t, H_drift, H_control_list, control_coeffs, dt, order=8, threshold=1e-10):
     """
-    Evolves the operator A(t) forward by one timestep dt using 4th-order Runge-Kutta (RK4).
-    Since the control pulses are piece-wise constant, H(t) is constant over this dt.
+    Pauli-string version of expm_multiply(dt*K, a): returns exp(dt*K) A_t using the series
+        sum_n (dt*K)^n A_t / n!
+    where K A = -i[H, A] (computeCommutator). Each term is pruned as it is built.
     """
-    # 1. Build the total Hamiltonian for this specific timestep[cite: 1]
-    H_total = ComputeHam(H_drift,H_control_list,control_coeffs)
+    H_total = ComputeHam(H_drift, H_control_list, control_coeffs)
 
-    # 2. Compute the RK4 slopes (k1, k2, k3, k4)
-    # k1 = f(t, A_t)
-    k1 = computeOperatorGradient(H_total, A_t)
-    
-    # k2 = f(t + dt/2, A_t + dt/2 * k1)
-    # We MUST simplify here to prevent combinatorial explosion of Pauli strings
-    A_k2 = (A_t + (dt / 2.0) * k1).simplify(atol=threshold)
-    k2 = computeOperatorGradient(H_total, A_k2)
-    
-    # k3 = f(t + dt/2, A_t + dt/2 * k2)
-    A_k3 = (A_t + (dt / 2.0) * k2).simplify(atol=threshold)
-    k3 = computeOperatorGradient(H_total, A_k3)
-    
-    # k4 = f(t + dt, A_t + dt * k3)
-    A_k4 = (A_t + dt * k3).simplify(atol=threshold)
-    k4 = computeOperatorGradient(H_total, A_k4)
-    
-    # 3. Combine to get the next operator state
-    A_next = A_t + (dt / 6.0) * (k1 + (2.0 * k2) + (2.0 * k3) + k4)
-    
-    # 4. Final pruning for the complete step
-    return A_next.simplify(atol=threshold)
+    A_next = A_t
+    term = A_t
+    #looping though taylor terms and adding them up
+    for n in range(1, order + 1):
+        term = ((dt / n) * computeCommutator(H_total, term)).simplify()
+        if np.all(np.abs(term.coeffs) <= threshold):   # nothing left to add
+            break
+        A_next = (A_next + term).simplify()
 
-
+    return A_next
 
 
 #THESE 3 CALCULATE THE GRADIETN WITH RESPECT TO EAHC CONTORL TERM LIKE THE PAPER
@@ -75,7 +54,7 @@ def forwardspropogation(A_init, H_drift, H_control_list, pulses, dt, threshold):
     propstates = [A_t]
 
     for coeffs in pulses:
-        A_t = propagate_step_rk4_matrix_free(A_t, H_drift, H_control_list,coeffs, dt, threshold)
+        A_t = propagate_step_exp(A_t, H_drift, H_control_list, coeffs, dt, threshold=threshold)
         propstates.append(A_t)
 
     return propstates
@@ -86,7 +65,7 @@ def backwardspropogatoin(A_Target, H_drift, H_control_list, pulses, dt, threshol
     propstates = [A_t]
 
     for coeffs in reversed(pulses):
-        A_t = propagate_step_rk4_matrix_free(A_t, H_drift, H_control_list, coeffs, -dt, threshold)
+        A_t = propagate_step_exp(A_t, H_drift, H_control_list, coeffs, -dt, threshold=threshold)
         propstates.append(A_t)
 
     propstates.reverse()
@@ -116,20 +95,20 @@ def compute_gradient_2nd_order_matrix_free(forwardprop, backwardprop, current_pu
         Htotal = ComputeHam(H_drift, H_control_list, current_pulses[l])
 
         #calculate the total term first
-        K_l_A = computeOperatorGradient(Htotal, A_l)
+        K_l_A = computeCommutator(Htotal, A_l)
         
         for k in range(num_controls):
             H_control_k = SparsePauliOp(H_control_list[k])
 
             # 1. First order term: i[H_k^c, A_l]
-            first_order_A = computeOperatorGradient(H_control_k, A_l)
+            first_order_A = computeCommutator(H_control_k, A_l)
             
             # 2. The commutator: i[H_total_l, first_order_A] - i[H_control_k, K_l_A]
-            commutator_A = computeOperatorGradient(Htotal, first_order_A) - computeOperatorGradient(H_control_k, K_l_A)
+            commutator_A = computeCommutator(Htotal, first_order_A) - computeCommutator(H_control_k, K_l_A)
             
             # 3. Combine into the full 2nd-order derivative applied to A_l
             derivative_A = (dt * first_order_A) - (0.5 * (dt**2) * commutator_A)
-            derivative_A = derivative_A.simplify(atol=threshold)
+            derivative_A = derivative_A.simplify()
             
             # 4. Overlap (trace) between the backward state and the derivative term
             dict_deriv = {str(pauli): coeff for pauli, coeff in zip(derivative_A.paulis, derivative_A.coeffs)}
@@ -196,3 +175,28 @@ def compute_infidelity(A_final, A_target):
         return 1.0
         
     return 1.0 - (dot_product / norm_target_sq)
+
+
+def compute_ground_state_infidelity_pauli(A_final, A_target):
+    """
+    Extracts the ground states of the final and target operators 
+    and computes the quantum state infidelity between them.
+    """
+    # 1. Convert operators to dense matrices
+    matrix_final = A_final.to_matrix()
+    matrix_target = A_target.to_matrix()
+    
+    # 2. Diagonalize to find eigenvalues and eigenvectors
+    # np.linalg.eigh is optimized for Hermitian/symmetric matrices
+    evals_final, evecs_final = np.linalg.eigh(matrix_final)
+    evals_target, evecs_target = np.linalg.eigh(matrix_target)
+    
+    # 3. Extract the ground state vector (eigenvector corresponding to the lowest eigenvalue)
+    gs_final = evecs_final[:, 0]
+    gs_target = evecs_target[:, 0]
+    
+    # 4. Compute state infidelity: 1 - |<psi_final | psi_target>|^2
+    overlap = np.vdot(gs_final, gs_target) # Complex dot product
+    state_infidelity = 1.0 - (np.abs(overlap) ** 2)
+    
+    return state_infidelity

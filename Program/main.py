@@ -5,9 +5,9 @@ from qiskit.quantum_info import Pauli
 
 # Import your own modules
 import Config
-import Tools
-import DLA_Cartan_Strcture as dla
-import Simulation  # <--- Importing your new math module
+import Tools.Tools as Tools
+import MatrixVer.DLA_Cartan_Strcture as dla
+import MatrixVer.Simulation as Simulation  # <--- Importing your new math module
 
 
 
@@ -70,9 +70,14 @@ def main():
     optimized_pulses = result.x.reshape((steps, num_controls))
     final_infidelity = result.fun
 
+
+    Finalop = Simulation.propagate_operator_sparse(StratingVector, optimized_pulses, timestep, kDrift,K_control_matrices)
+    stateinfil = Simulation.compute_ground_state_infidelity_dla(Finalop[-1], TargetVector, pauliLiearray)
+    print(stateinfil)
+
+
     timeaxis = np.linspace(0,timestep*steps,steps)
     print(len(timeaxis))
-    print(controlAlgebra_list)
     plt.plot(timeaxis,optimized_pulses[:, 1], label = controlAlgebra_list[1].to_label())
     plt.plot(timeaxis,optimized_pulses[:, 0], label = controlAlgebra_list[0].to_label())
     plt.plot(timeaxis,optimized_pulses[:, 2], label = controlAlgebra_list[2].to_label())

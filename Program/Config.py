@@ -1,5 +1,5 @@
 import numpy as np
-import Tools
+import Tools.Tools as Tools
 
 #System properties
 activeSystem = "linearSpinChain"

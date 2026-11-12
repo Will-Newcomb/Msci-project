@@ -1,11 +1,12 @@
 
 import numpy as np
 import Config
-import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 from qiskit.quantum_info import SparsePauliOp, Pauli, PauliList
-import PauliSimulation as ps
+import PauliVer.PauliSimulation as ps
+
+
 
 def main():
     # --- Problem Setup ---
